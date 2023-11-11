@@ -1,17 +1,26 @@
-use std::cmp;
+use std::clone::Clone;
 
-fn setup_matrix(strand_1: &str, strand_2: &str) -> Vec<Vec<i32>> {
+#[derive(Clone)]
+#[derive(Debug)]
+struct Mcell {
+    score: i32,
+    // Binary represents encoding of trace combinations
+    // 000 (origin), 100 (left), 010 (diagonal), 001 (up)
+    trace: i8
+}
+
+fn setup_matrix(strand_1: &str, strand_2: &str) -> Vec<Vec<Mcell>> {
     let size_1 = strand_1.len();
     let size_2 = strand_2.len();
 
-    let mut matrix = vec![vec![0 as i32; size_2 + 1]; size_1 + 1];
+    let mut matrix = vec![vec![Mcell{score: 0, trace: 0}; size_2 + 1]; size_1 + 1];
 
     for i in 1..size_1 + 1 {
-        matrix[0][i] = i as i32 * -1;
+        matrix[0][i] = Mcell{score: i as i32 * -1, trace: 0 | 0b100};
     }
 
     for i in 1..size_2 + 1 {
-        matrix[i][0] = i as i32 * -1;
+        matrix[i][0] = Mcell{score: i as i32 * -1, trace: 0 | 0b001};
     }
 
     return matrix;
@@ -25,32 +34,30 @@ fn match_score(a: char, b: char, s_match: i32, s_mismatch: i32) -> i32 {
 fn fill_table(
     strand_1: &str,
     strand_2: &str,
-    mut m: Vec<Vec<i32>>, 
+    mut m: Vec<Vec<Mcell>>, 
     s_match: i32,
     s_mismatch: i32,
     s_indel: i32,
-) -> Vec<Vec<i32>> {
+) -> Vec<Vec<Mcell>> {
     for i in 1..strand_2.len() + 1 {
         for j in 1..strand_1.len() + 1 {
             let curr_c1 = strand_1.chars().nth(j - 1).unwrap();
             let curr_c2 = strand_2.chars().nth(i - 1).unwrap();
 
-            let score_up = m[i - 1][j] + s_indel;
-            let score_left = m[i][j - 1] + s_indel;
-            let score_diag = m[i - 1][j - 1] + match_score(curr_c1, curr_c2, s_match, s_mismatch);
+            let score_up = m[i - 1][j].score + s_indel;
+            let score_left = m[i][j - 1].score + s_indel;
+            let score_diag = m[i - 1][j - 1].score + match_score(curr_c1, curr_c2, s_match, s_mismatch);
 
-            // TODO: change behaviour to check multiple scores
-            m[i][j] = cmp::max(score_diag, cmp::max(score_up, score_left));
+            let curr_max = *[score_up, score_left, score_diag].iter().max().unwrap();
+            m[i][j] = Mcell{score: curr_max, trace: 0};
+            
+            if score_up == curr_max { m[i][j].trace |= 0b001 }
+            if score_left == curr_max { m[i][j].trace |= 0b100 }
+            if score_diag == curr_max { m[i][j].trace |= 0b010 }
         }
     }
 
     m
-}
-
-fn print_arr(m: Vec<Vec<i32>>) {
-    for i in 0..m.len() {
-        println!("{:?}", m[i]);
-    }
 }
 
 pub fn needleman_wunsch(
@@ -61,13 +68,15 @@ pub fn needleman_wunsch(
     let mut m = setup_matrix(strand_1, strand_2);
     m = fill_table(strand_1, strand_2, m, s_match, s_mismatch, s_indel);
 
-    let last_pos = *m.last().unwrap().last().unwrap();
+    let last_pos = m.last().unwrap().last().unwrap();
 
     if debug {
-        print_arr(m);
+        for i in 0..m.len() {
+            println!("{:?}", m[i]);
+        }
     }
     
-    last_pos
+    last_pos.score
 }
 
 #[cfg(test)]
@@ -98,5 +107,101 @@ mod tests {
         let res = match_score(a, b, s_match, s_mismatch);
 
         assert_eq!(res, s_match);
+    }
+
+    #[test]
+    fn setup_trace_line() {
+        let strand_1 = "AAAAAAAA";
+        let strand_2 = "AAAAAAAA";
+
+        let match_score = 1;
+        let mismatch_score = -1;
+        let indel_score = -1;
+
+        let mut m = setup_matrix(strand_1, strand_2);
+        m = fill_table(strand_1, strand_2, m, 
+            match_score, mismatch_score, indel_score);
+        
+        assert_eq!(m[0][0].trace, 0);
+
+        for i in 1..strand_1.len() + 1 {
+            assert_ne!(m[0][i].trace & 0b100, 0);
+        }
+    }
+
+    #[test]
+    fn setup_trace_col() {
+        let strand_1 = "AAAAAAAA";
+        let strand_2 = "AAAAAAAA";
+
+        let match_score = 1;
+        let mismatch_score = -1;
+        let indel_score = -1;
+
+        let mut m = setup_matrix(strand_1, strand_2);
+        m = fill_table(strand_1, strand_2, m, 
+            match_score, mismatch_score, indel_score);
+        
+        assert_eq!(m[0][0].trace, 0);
+
+        for i in 1..strand_2.len() + 1 {
+            assert_ne!(m[i][0].trace & 0b001, 0);
+        }
+    }
+
+    #[test]
+    fn setup_score_line() {
+        let strand_1 = "AAAAAAAA";
+        let strand_2 = "AAAAAAAA";
+
+        let match_score = 1;
+        let mismatch_score = -1;
+        let indel_score = -1;
+
+        let mut m = setup_matrix(strand_1, strand_2);
+        m = fill_table(strand_1, strand_2, m, 
+            match_score, mismatch_score, indel_score);
+        
+        for i in 1..strand_1.len() + 1 {
+            assert_eq!(m[0][i].score, i as i32 * -1);
+        }
+    }
+
+    #[test]
+    fn setup_score_col() {
+        let strand_1 = "AAAAAAAA";
+        let strand_2 = "AAAAAAAA";
+
+        let match_score = 1;
+        let mismatch_score = -1;
+        let indel_score = -1;
+
+        let mut m = setup_matrix(strand_1, strand_2);
+        m = fill_table(strand_1, strand_2, m, 
+            match_score, mismatch_score, indel_score);
+        
+        for i in 1..strand_2.len() + 1 {
+            assert_eq!(m[i][0].score, i as i32 * -1);
+        }
+    }
+
+    #[test]
+    fn all_traces() {
+        let strand_1 = "ACGTACGT";
+        let strand_2 = "TGCATGCA";
+
+        let match_score = 1;
+        let mismatch_score = -1;
+        let indel_score = -1;
+
+        let mut m = setup_matrix(strand_1, strand_2);
+        m = fill_table(strand_1, strand_2, m, 
+            match_score, mismatch_score, indel_score);
+        
+        for i in 1..strand_1.len() + 1 {
+            for j in 1..strand_2.len() + 1 {
+                assert_ne!(m[i][j].trace | 0b111, 0);
+            }
+        }
     }
 }
