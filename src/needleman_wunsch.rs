@@ -60,6 +60,47 @@ fn fill_table(
     m
 }
 
+fn align(
+    strand_1: &str, strand_2: &str,
+    alignment: Vec<i8>
+) -> [String; 2] {
+    let mut cursor_1 = (strand_1.len() - 1) as i8;
+    let mut cursor_2 = (strand_2.len() - 1) as i8;
+
+    let mut aligned_1 = String::new();
+    let mut aligned_2 = String::new();
+
+    for option in alignment.iter() {
+        match option {
+            // Diagonal, alignment
+            0b010 => {
+                aligned_1.insert(0, strand_1.chars().nth(cursor_1 as usize).unwrap());
+                aligned_2.insert(0, strand_2.chars().nth(cursor_2 as usize).unwrap());
+                cursor_1 -= 1;
+                cursor_2 -= 1;
+            }
+            // Left
+            0b100 => {
+                aligned_1.insert(0, strand_1.chars().nth(cursor_1 as usize).unwrap());
+                aligned_2.insert(0, '-');
+                cursor_1 -= 1;
+            }
+            // Up
+            0b001 => {
+                aligned_1.insert(0, '-');
+                aligned_2.insert(0, strand_2.chars().nth(cursor_2 as usize).unwrap());
+                cursor_2 -= 1;
+            }
+            0b000 => break,
+
+            _ => panic!("Unknown value"),
+        }
+    }
+
+    [aligned_1, aligned_2]
+
+}
+
 pub fn needleman_wunsch(
     strand_1: &str, strand_2: &str,
     s_match: i32, s_mismatch: i32, s_indel: i32,
@@ -203,5 +244,18 @@ mod tests {
                 assert_ne!(m[i][j].trace | 0b111, 0);
             }
         }
+    }
+
+    #[test]
+    fn alignment_1() {
+        let strand_1 = "AAGTCGGAT";
+        let strand_2 = "AGGCGTATT";
+
+        let alignment = vec![0b010, 0b001, 0b010, 0b010, 0b010, 0b010, 0b010, 0b010, 0b010, 0b100];
+
+        let res = align(strand_1, strand_2, alignment);
+
+        assert_eq!(res[0], "AAGTCGGA-T");
+        assert_eq!(res[1], "-AGGCGTATT");
     }
 }
